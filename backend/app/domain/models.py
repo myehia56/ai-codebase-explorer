@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship, declarative_base
 from pgvector.sqlalchemy import Vector
 from datetime import datetime, timezone
 import enum
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
@@ -33,15 +34,6 @@ class Repository(Base):
     owner = relationship("User", back_populates="repositories")
     files = relationship("File", back_populates="repository")
 
-class File(Base):
-    __tablename__ = 'files'
-    id = Column(Integer, primary_key=True, index=True)
-    repository_id = Column(Integer, ForeignKey('repositories.id'))
-    path = Column(String, nullable=False)
-    language = Column(String)
-    content = Column(Text)
-    repository = relationship("Repository", back_populates="files")
-    chunks = relationship("CodeChunk", back_populates="file")
 
 class CodeChunk(Base):
     __tablename__ = 'code_chunks'
@@ -54,3 +46,17 @@ class CodeChunk(Base):
     # 1536 dimensions for standard OpenAI embedding models
     embedding = Column(Vector(1536))
     file = relationship("File", back_populates="chunks")
+
+class File(Base):
+    __tablename__ = "files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repository_id = Column(Integer, ForeignKey("repositories.id", ondelete="CASCADE"))
+    path = Column(String, index=True)
+    language = Column(String)
+    content = Column(Text)
+    
+    # Connects upward to the Repository model
+    repository = relationship("Repository", back_populates="files")
+    # Connects downward to the CodeChunk model
+    chunks = relationship("CodeChunk", back_populates="file", cascade="all, delete-orphan")
