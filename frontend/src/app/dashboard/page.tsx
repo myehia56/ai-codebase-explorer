@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import SearchPanel from "../../components/SearchPanel";
 
 // Define what a repository looks like
 interface Repo {
@@ -136,6 +137,12 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+
+{/* --- The Search Panel Component is now injected here! --- */}
+        <div className="mt-12">
+          <SearchPanel repositoryId={1} />
+        </div>
+
       </div>
     </div>
   );
