@@ -5,6 +5,7 @@ import httpx
 from app.worker import celery_app
 from app.core.database import SessionLocal
 from app.domain.models import Repository, RepositoryStatus, File, User
+from app.services.chunking import process_file_into_chunks
 
 # We only want to save actual code, not images or binaries
 SUPPORTED_EXTENSIONS = {
@@ -82,6 +83,11 @@ def clone_and_index_repo(self, repository_id: int):
                         content=content
                     )
                     db.add(db_file)
+                    db.commit() # Save the file first so it gets an ID
+                    db.refresh(db_file)
+                    
+                    process_file_into_chunks(db_file, db)
+                    
 
         repo.status = RepositoryStatus.READY
         db.commit()
