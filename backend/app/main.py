@@ -1,25 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
-# Import our new auth routes
-from app.api import auth
-from app.api import repositories
+# Import ALL your API routers here
+from app.api import auth, repositories, search
 
-app = FastAPI(title="AI Codebase Explorer API")
+app = FastAPI(title="AI Codebase Explorer")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Attach the auth routes to the main application
-app.include_router(auth.router)
-app.include_router(repositories.router)
+# 1. Auth router (Prefix removed to fix /auth/auth/github)
+app.include_router(auth.router, tags=["auth"])
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "service": "backend"}
+# 2. Repos router (Prefix removed to fix /repos/repos/github)
+app.include_router(repositories.router, tags=["repositories"])
+
+# 3. Search router (Keep this one, we wrote it from scratch without a prefix inside!)
+app.include_router(search.router, prefix="/search", tags=["search"])

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import SearchPanel from "../../components/SearchPanel";
+import SearchPanel from "@/components/SearchPanel";
 
 // Define what a repository looks like
 interface Repo {
@@ -17,6 +17,9 @@ export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // NEW: State to track which repository we are actively searching
+  const [activeRepo, setActiveRepo] = useState<{id: number, name: string} | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -93,55 +96,80 @@ export default function Dashboard() {
                     {repo.description || "No description provided."}
                   </p>
                 </div>
-                <button 
-                  onClick={async (e) => {
-                    const btn = e.currentTarget;
-                    btn.disabled = true;
-                    btn.innerText = "Importing...";
-                    
-                    try {
-                      const token = localStorage.getItem("token");
-                      const response = await fetch("http://localhost:8000/repos/import", {
-                        method: "POST",
-                        headers: {
-                          "Authorization": `Bearer ${token}`,
-                          "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                          github_repo_id: repo.id,
-                          name: repo.name,
-                          full_name: repo.full_name,
-                          branch: "main"
-                        })
-                      });
+                
+                {/* NEW: Side-by-side buttons for Importing and Searching */}
+                <div className="flex gap-2 mt-4">
+                  <button 
+                    onClick={async (e) => {
+                      const btn = e.currentTarget;
+                      btn.disabled = true;
+                      btn.innerText = "Importing...";
+                      
+                      try {
+                        const token = localStorage.getItem("token");
+                        const response = await fetch("http://localhost:8000/repos/import", {
+                          method: "POST",
+                          headers: {
+                            "Authorization": `Bearer ${token}`,
+                            "Content-Type": "application/json"
+                          },
+                          body: JSON.stringify({
+                            github_repo_id: repo.id,
+                            name: repo.name,
+                            full_name: repo.full_name,
+                            branch: "main"
+                          })
+                        });
 
-                      if (response.ok) {
-                        btn.innerText = "Imported!";
-                        btn.classList.add("bg-green-600", "text-white");
-                        btn.classList.remove("bg-white", "text-black");
-                      } else {
-                        btn.innerText = "Failed";
+                        if (response.ok) {
+                          btn.innerText = "Imported!";
+                          btn.classList.add("bg-green-600", "text-white");
+                          btn.classList.remove("bg-white", "text-black");
+                        } else {
+                          btn.innerText = "Failed";
+                          btn.disabled = false;
+                        }
+                      } catch (error) {
+                        console.error(error);
+                        btn.innerText = "Error";
                         btn.disabled = false;
                       }
-                    } catch (error) {
-                      console.error(error);
-                      btn.innerText = "Error";
-                      btn.disabled = false;
-                    }
-                  }}
-                  className="w-full bg-white text-black py-2 rounded font-medium hover:bg-gray-200 transition disabled:opacity-50 mt-4"
-                >
-                  Import for Indexing
-                </button>
+                    }}
+                    className="flex-1 bg-white text-black py-2 rounded font-medium hover:bg-gray-200 transition disabled:opacity-50 text-sm"
+                  >
+                    Import
+                  </button>
+
+                  <button 
+                    onClick={() => setActiveRepo({ id: repo.id, name: repo.name })}
+                    className="flex-1 bg-blue-600 text-white py-2 rounded font-medium hover:bg-blue-700 transition text-sm"
+                  >
+                    Search
+                  </button>
+                </div>
+
               </div>
             ))}
           </div>
         )}
 
-{/* --- The Search Panel Component is now injected here! --- */}
-        <div className="mt-12">
-          <SearchPanel repositoryId={1} />
-        </div>
+        {/* NEW: Only show the search panel if a repository is selected */}
+        {activeRepo && (
+          <div className="mt-16 border-t border-gray-800 pt-8 pb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">
+                Querying: <span className="text-blue-400">{activeRepo.name}</span>
+              </h2>
+              <button 
+                onClick={() => setActiveRepo(null)}
+                className="text-gray-400 hover:text-white text-sm"
+              >
+                Close Search
+              </button>
+            </div>
+            <SearchPanel repositoryName={activeRepo.name} />
+          </div>
+        )}
 
       </div>
     </div>

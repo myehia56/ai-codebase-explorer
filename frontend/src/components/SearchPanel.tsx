@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
-export default function SearchPanel({ repositoryId }: { repositoryId: number }) {
+export default function SearchPanel({ repositoryName }: { repositoryName: string }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
+  const [aiExplanation, setAiExplanation] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -15,26 +16,52 @@ export default function SearchPanel({ repositoryId }: { repositoryId: number }) 
     setIsLoading(true);
     setError("");
     setResults([]);
+    setAiExplanation(""); // Clear previous chat
 
     try {
-      const response = await fetch("http://localhost:8000/search/", {
+      // Get the auth token from local storage
+      const token = localStorage.getItem("token");
+
+      // 1. Fetch the raw code chunks (Your existing endpoint)
+      const searchRes = await fetch("http://localhost:8000/search/", {
         method: "POST",
-        headers: {
+        headers: { 
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({
-          repository_id: repositoryId,
-          query: query,
-          limit: 5,
-        }),
+        body: JSON.stringify({ repository_name: repositoryName, query, limit: 5 }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch search results.");
-      }
+      if (!searchRes.ok) throw new Error("Failed to fetch code chunks.");
+      const searchData = await searchRes.json();
+      setResults(searchData.results);
 
-      const data = await response.json();
-      setResults(data.results);
+      // 2. Fetch the streaming AI explanation
+      const chatRes = await fetch("http://localhost:8000/search/chat", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ repository_name: repositoryName, query, limit: 5 }),
+      });
+
+      if (!chatRes.ok) throw new Error("Failed to connect to LLM.");
+      if (!chatRes.body) throw new Error("No readable stream available.");
+
+      // 3. Read the stream as it arrives
+      const reader = chatRes.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          setAiExplanation((prev) => prev + chunk);
+        }
+      }
     } catch (err) {
       console.error(err);
       setError("Something went wrong while searching the codebase.");
@@ -45,9 +72,8 @@ export default function SearchPanel({ repositoryId }: { repositoryId: number }) 
 
   return (
     <div className="mt-8 bg-gray-900 p-6 rounded-lg shadow-lg border border-gray-800">
-      <h2 className="text-xl font-bold text-white mb-4">Query Codebase</h2>
+      <h2 className="text-xl font-bold text-red-500 mb-4">Querying: {repositoryName} - TESTING</h2>
       
-      {/* Search Form */}
       <form onSubmit={handleSearch} className="flex gap-4 mb-6">
         <input
           type="text"
@@ -65,10 +91,20 @@ export default function SearchPanel({ repositoryId }: { repositoryId: number }) 
         </button>
       </form>
 
-      {/* Error Message */}
       {error && <p className="text-red-400 mb-4">{error}</p>}
 
-      {/* Results Display */}
+      {/* AI Explanation Box */}
+      {(aiExplanation || isLoading) && (
+        <div className="mb-6 p-5 bg-blue-900/30 border border-blue-800 rounded text-blue-100 leading-relaxed">
+          <h3 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+            AI Analysis
+            {isLoading && !aiExplanation && <span className="animate-pulse">...</span>}
+          </h3>
+          <p className="whitespace-pre-wrap">{aiExplanation}</p>
+        </div>
+      )}
+
+      {/* Raw Code Chunks */}
       <div className="space-y-6">
         {results.map((result, index) => (
           <div key={index} className="bg-gray-800 rounded border border-gray-700 overflow-hidden">
