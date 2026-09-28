@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+const INVALID_QUERY_TRIGGER = "The input provided is not recognized";
+
 export default function SearchPanel({ repositoryName }: { repositoryName: string }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -9,47 +11,60 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const isInvalidQuery = aiExplanation.includes(INVALID_QUERY_TRIGGER);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
 
+    if (query.trim().length < 3) {
+      setError("Please submit a more specific technical question.");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
     setResults([]);
-    setAiExplanation(""); // Clear previous chat
+    setAiExplanation("");
 
     try {
-      // Get the auth token from local storage
       const token = localStorage.getItem("token");
 
-      // 1. Fetch the raw code chunks (Your existing endpoint)
+      // 1. Fetch the raw code chunks via pgvector similarity search
       const searchRes = await fetch("http://localhost:8000/search/", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ repository_name: repositoryName, query, limit: 5 }),
+        body: JSON.stringify({
+          repository_name: repositoryName,
+          query: query,
+        }),
       });
 
       if (!searchRes.ok) throw new Error("Failed to fetch code chunks.");
       const searchData = await searchRes.json();
-      setResults(searchData.results);
+      setResults(searchData.results || []);
 
       // 2. Fetch the streaming AI explanation
       const chatRes = await fetch("http://localhost:8000/search/chat", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ repository_name: repositoryName, query, limit: 5 }),
+        body: JSON.stringify({
+          repository_name: repositoryName,
+          query,
+          limit: 5,
+        }),
       });
 
       if (!chatRes.ok) throw new Error("Failed to connect to LLM.");
       if (!chatRes.body) throw new Error("No readable stream available.");
 
-      // 3. Read the stream as it arrives
+      // 3. Read the stream token by token
       const reader = chatRes.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
@@ -72,8 +87,6 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
 
   return (
     <div className="mt-8 bg-gray-900 p-6 rounded-lg shadow-lg border border-gray-800">
-      <h2 className="text-xl font-bold text-red-500 mb-4">Querying: {repositoryName} - TESTING</h2>
-      
       <form onSubmit={handleSearch} className="flex gap-4 mb-6">
         <input
           type="text"
@@ -95,8 +108,18 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
 
       {/* AI Explanation Box */}
       {(aiExplanation || isLoading) && (
-        <div className="mb-6 p-5 bg-blue-900/30 border border-blue-800 rounded text-blue-100 leading-relaxed">
-          <h3 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+        <div
+          className={`mb-6 p-5 rounded leading-relaxed border transition-colors ${
+            isInvalidQuery
+              ? "bg-amber-950/30 border-amber-800 text-amber-200"
+              : "bg-blue-900/30 border-blue-800 text-blue-100"
+          }`}
+        >
+          <h3
+            className={`font-semibold mb-2 flex items-center gap-2 ${
+              isInvalidQuery ? "text-amber-400" : "text-blue-400"
+            }`}
+          >
             AI Analysis
             {isLoading && !aiExplanation && <span className="animate-pulse">...</span>}
           </h3>
@@ -104,26 +127,35 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
         </div>
       )}
 
-      {/* Raw Code Chunks */}
-      <div className="space-y-6">
-        {results.map((result, index) => (
-          <div key={index} className="bg-gray-800 rounded border border-gray-700 overflow-hidden">
-            <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
-              <span className="text-sm font-mono text-blue-400">{result.file_path}</span>
-              <span className="text-xs text-gray-500">Match #{index + 1}</span>
+      {/* Raw Code Chunks: Conditionally rendered only if valid question was answered */}
+      {!isInvalidQuery && results.length > 0 && (
+        <div className="space-y-6">
+          <h4 className="text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3">
+            Referenced Code Chunks ({results.length})
+          </h4>
+          {results.map((result, index) => (
+            <div
+              key={index}
+              className="bg-gray-800 rounded border border-gray-700 overflow-hidden"
+            >
+              <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
+                <span className="text-sm font-mono text-blue-400">{result.file_path}</span>
+                <span className="text-xs text-gray-500">Match #{index + 1}</span>
+              </div>
+              <div className="p-4 overflow-x-auto">
+                <pre className="text-sm font-mono text-gray-300">
+                  <code>{result.content}</code>
+                </pre>
+              </div>
             </div>
-            <div className="p-4 overflow-x-auto">
-              <pre className="text-sm font-mono text-gray-300">
-                <code>{result.content}</code>
-              </pre>
-            </div>
-          </div>
-        ))}
-        
-        {results.length === 0 && !isLoading && !error && (
-          <p className="text-gray-500 italic">No results yet. Ask a question to search the repository.</p>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!isInvalidQuery && results.length === 0 && !isLoading && !error && (
+        <p className="text-gray-500 italic">No results yet. Ask a question to search the repository.</p>
+      )}
     </div>
   );
 }

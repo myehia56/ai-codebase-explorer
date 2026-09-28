@@ -78,7 +78,10 @@ async def chat_codebase(request: SearchRequest, db: Session = Depends(get_db)):
     
     full_context = "\n\n".join(context_blocks)
 
+# 3. Define the system prompt
     prompt = f"""You are an expert software architect. Answer the user's question about the codebase using ONLY the provided context below.
+    
+    CRITICAL INSTRUCTION: If the user's input consists of random keystrokes, lacks semantic meaning, or cannot be parsed as a coherent request, DO NOT attempt to formulate an answer. Instead, reply EXACTLY with: "The input provided is not recognized as a valid technical inquiry. Please submit a clearly articulated question regarding the codebase."
     
 Context:
 {full_context}

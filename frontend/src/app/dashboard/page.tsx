@@ -36,6 +36,7 @@ export default function Dashboard() {
       const token = localStorage.getItem("token");
       const response = await fetch("http://localhost:8000/repos/github", {
         headers: {
+          "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         }
       });
