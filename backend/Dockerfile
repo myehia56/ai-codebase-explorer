@@ -6,9 +6,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Install system dependencies required for psycopg2 and compiling
+# Install system dependencies required for psycopg2, compiling, and Git cloning
 RUN apt-get update \
-    && apt-get install -y gcc libpq-dev \
+    && apt-get install -y gcc libpq-dev git \
     && apt-get clean
 
 COPY requirements.txt .

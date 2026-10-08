@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 
 class RepositoryImport(BaseModel):
-    github_repo_id: int
     name: str
     full_name: str
     branch: str = "main"
