@@ -1,9 +1,10 @@
 import os
+import logging
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 from langchain_ollama import OllamaEmbeddings
 from app.domain.models import CodeChunk
 
-# Read Ollama URL dynamically from docker-compose / .env with fallback
+logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 
 embedder = OllamaEmbeddings(
@@ -24,11 +25,10 @@ LANGUAGE_MAP = {
 }
 
 def process_file_into_chunks(db_file, db_session):
-    """Slices a raw code file and batches vector embedding generation."""
+    """Slices a raw code file and embeds it safely, skipping chunks that crash the LLM."""
     if not db_file.content or not db_file.content.strip():
         return
 
-    # Normalize language string to match the map safely
     lang_key = db_file.language.lower() if db_file.language else None
     lc_language = LANGUAGE_MAP.get(lang_key)
     
@@ -43,20 +43,23 @@ def process_file_into_chunks(db_file, db_session):
     if not chunks:
         return
 
-    chunk_texts = [c.page_content for c in chunks]
-
-    # Batch embedding: sends all chunks in one HTTP payload to Ollama
-    # instead of serial round-trips per chunk
-    embeddings = embedder.embed_documents(chunk_texts)
-
-    db_chunks = [
-        CodeChunk(
-            file_id=db_file.id,
-            content=text,
-            embedding=emb
-        )
-        for text, emb in zip(chunk_texts, embeddings)
-    ]
+    db_chunks = []
     
-    db_session.add_all(db_chunks)
-    db_session.commit()
+    # Process individually with a safety net so one bad file doesn't nuke the import
+    for chunk in chunks:
+        try:
+            emb = embedder.embed_query(chunk.page_content)
+            db_chunks.append(
+                CodeChunk(
+                    file_id=db_file.id,
+                    content=chunk.page_content,
+                    embedding=emb
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Skipped a chunk due to Ollama error: {e}")
+            continue
+
+    if db_chunks:
+        db_session.add_all(db_chunks)
+        db_session.commit()
