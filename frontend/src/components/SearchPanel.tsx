@@ -29,42 +29,47 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
 
     try {
       const token = localStorage.getItem("token");
-
-      // 1. Fetch the raw code chunks via pgvector similarity search
-      const searchRes = await fetch("http://localhost:8000/search/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          repository_name: repositoryName,
-          query: query,
-        }),
+      
+      const requestHeaders = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      };
+      
+      const requestBody = JSON.stringify({
+        repository_name: repositoryName,
+        query: query,
+        limit: 5,
       });
 
-      if (!searchRes.ok) throw new Error("Failed to fetch code chunks.");
-      const searchData = await searchRes.json();
-      setResults(searchData.results || []);
-
-      // 2. Fetch the streaming AI explanation
-      const chatRes = await fetch("http://localhost:8000/search/chat", {
+      // 1. Launch BOTH requests concurrently for a true RAG experience
+      const searchPromise = fetch("http://localhost:8000/search/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          repository_name: repositoryName,
-          query,
-          limit: 5,
-        }),
+        headers: requestHeaders,
+        body: requestBody,
       });
 
+      const chatPromise = fetch("http://localhost:8000/search/chat", {
+        method: "POST",
+        headers: requestHeaders,
+        body: requestBody,
+      });
+
+      // 2. Resolve the raw chunks immediately without blocking the AI stream
+      searchPromise
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            setResults(data.results || []);
+          }
+        })
+        .catch((err) => console.error("Error fetching chunks:", err));
+
+      // 3. Await and process the chat stream token by token
+      const chatRes = await chatPromise;
+      
       if (!chatRes.ok) throw new Error("Failed to connect to LLM.");
       if (!chatRes.body) throw new Error("No readable stream available.");
 
-      // 3. Read the stream token by token
       const reader = chatRes.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
@@ -153,7 +158,7 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
       )}
 
       {/* Empty State */}
-      {!isInvalidQuery && results.length === 0 && !isLoading && !error && (
+      {!isInvalidQuery && results.length === 0 && !isLoading && !error && !aiExplanation && (
         <p className="text-gray-500 italic">No results yet. Ask a question to search the repository.</p>
       )}
     </div>
