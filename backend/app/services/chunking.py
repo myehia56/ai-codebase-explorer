@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 from langchain_ollama import OllamaEmbeddings
 from app.domain.models import CodeChunk
@@ -25,7 +26,7 @@ LANGUAGE_MAP = {
 }
 
 def process_file_into_chunks(db_file, db_session):
-    """Slices a raw code file and embeds it safely, skipping chunks that crash the LLM."""
+    """Slices a raw code file and embeds it safely using micro-batches."""
     if not db_file.content or not db_file.content.strip():
         return
 
@@ -45,21 +46,46 @@ def process_file_into_chunks(db_file, db_session):
 
     db_chunks = []
     
-    # Process individually with a safety net so one bad file doesn't nuke the import
-    for chunk in chunks:
+    # Process in micro-batches of 10 to speed things up safely
+    batch_size = 10
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i + batch_size]
+        texts = [chunk.page_content for chunk in batch]
+        
         try:
-            emb = embedder.embed_query(chunk.page_content)
-            db_chunks.append(
-                CodeChunk(
-                    file_id=db_file.id,
-                    content=chunk.page_content,
-                    embedding=emb
+            # embed_documents is much faster than embed_query in a loop
+            embeddings = embedder.embed_documents(texts)
+            
+            for chunk, emb in zip(batch, embeddings):
+                db_chunks.append(
+                    CodeChunk(
+                        file_id=db_file.id,
+                        content=chunk.page_content,
+                        embedding=emb
+                    )
                 )
-            )
         except Exception as e:
-            logger.warning(f"Skipped a chunk due to Ollama error: {e}")
-            continue
+            print(f"CRITICAL OLLAMA ERROR in batch: {str(e)}")
+            # If a batch fails, we fall back to doing it one-by-one to salvage the safe chunks
+            for chunk in batch:
+                try:
+                    emb = embedder.embed_query(chunk.page_content)
+                    db_chunks.append(
+                        CodeChunk(
+                            file_id=db_file.id,
+                            content=chunk.page_content,
+                            embedding=emb
+                        )
+                    )
+                except Exception as inner_e:
+                    print(f"SKIPPED CHUNK. Ollama connection or context error: {inner_e}")
+                    continue
 
     if db_chunks:
-        db_session.add_all(db_chunks)
-        db_session.commit()
+        try:
+            db_session.add_all(db_chunks)
+            db_session.commit()
+            print(f"Successfully saved {len(db_chunks)} chunks for {db_file.file_path}")
+        except Exception as db_err:
+            db_session.rollback()
+            print(f"Database save failed for {db_file.file_path}: {db_err}")
