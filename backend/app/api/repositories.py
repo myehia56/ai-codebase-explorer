@@ -1,10 +1,10 @@
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.domain.models import User, Repository, RepositoryStatus
+from app.domain.models import User, Repository, RepositoryStatus, File, CodeChunk
 from app.domain.schemas import RepositoryImport, RepositoryResponse
 from app.api.deps import get_current_user
 
@@ -141,3 +141,40 @@ async def import_public_repository(
     clone_and_index_repo.delay(new_repo.id)
     
     return new_repo
+
+@router.delete("/{repo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_repository(
+    repo_id: int, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a repository and all its associated files and vector chunks."""
+    
+    # Ensure the repository exists and belongs to the current user
+    repo = db.query(Repository).filter(
+        Repository.id == repo_id,
+        Repository.user_id == current_user.id
+    ).first()
+    
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    try:
+        # 1. Find all files associated with this repository
+        file_ids = [f.id for f in db.query(File.id).filter(File.repository_id == repo.id).all()]
+        
+        # 2. Delete all vector chunks associated with those files
+        if file_ids:
+            db.query(CodeChunk).filter(CodeChunk.file_id.in_(file_ids)).delete(synchronize_session=False)
+
+        # 3. Delete the files
+        db.query(File).filter(File.repository_id == repo.id).delete(synchronize_session=False)
+
+        # 4. Delete the repository itself
+        db.delete(repo)
+        db.commit()
+        
+        return None
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
