@@ -13,6 +13,11 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
 
   const isInvalidQuery = aiExplanation.includes(INVALID_QUERY_TRIGGER);
 
+  // Sanitize repository name (converts "https://github.com/user/repo.git" -> "user/repo")
+  const cleanRepoName = repositoryName
+    .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+    .replace(/\.git$/i, "");
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
@@ -36,7 +41,7 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
       };
       
       const requestBody = JSON.stringify({
-        repository_name: repositoryName,
+        repository_name: cleanRepoName, // Using the sanitized name!
         query: query,
         limit: 5,
       });
@@ -111,51 +116,61 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
 
       {error && <p className="text-red-400 mb-4">{error}</p>}
 
-      {/* AI Explanation Box */}
-      {(aiExplanation || isLoading) && (
-        <div
-          className={`mb-6 p-5 rounded leading-relaxed border transition-colors ${
-            isInvalidQuery
-              ? "bg-amber-950/30 border-amber-800 text-amber-200"
-              : "bg-blue-900/30 border-blue-800 text-blue-100"
-          }`}
-        >
-          <h3
-            className={`font-semibold mb-2 flex items-center gap-2 ${
-              isInvalidQuery ? "text-amber-400" : "text-blue-400"
-            }`}
-          >
-            AI Analysis
-            {isLoading && !aiExplanation && <span className="animate-pulse">...</span>}
-          </h3>
-          <p className="whitespace-pre-wrap">{aiExplanation}</p>
-        </div>
-      )}
-
-      {/* Raw Code Chunks: Conditionally rendered only if valid question was answered */}
-      {!isInvalidQuery && results.length > 0 && (
-        <div className="space-y-6">
-          <h4 className="text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3">
-            Referenced Code Chunks ({results.length})
-          </h4>
-          {results.map((result, index) => (
+      {/* Two-Column Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Left Column: AI Explanation Box */}
+        {(aiExplanation || isLoading) && (
+          <div className="h-fit">
             <div
-              key={index}
-              className="bg-gray-800 rounded border border-gray-700 overflow-hidden"
+              className={`p-5 rounded leading-relaxed border transition-colors ${
+                isInvalidQuery
+                  ? "bg-amber-950/30 border-amber-800 text-amber-200"
+                  : "bg-blue-900/30 border-blue-800 text-blue-100"
+              }`}
             >
-              <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
-                <span className="text-sm font-mono text-blue-400">{result.file_path}</span>
-                <span className="text-xs text-gray-500">Match #{index + 1}</span>
-              </div>
-              <div className="p-4 overflow-x-auto">
-                <pre className="text-sm font-mono text-gray-300">
-                  <code>{result.content}</code>
-                </pre>
-              </div>
+              <h3
+                className={`font-semibold mb-2 flex items-center gap-2 ${
+                  isInvalidQuery ? "text-amber-400" : "text-blue-400"
+                }`}
+              >
+                AI Analysis
+                {isLoading && !aiExplanation && <span className="animate-pulse">...</span>}
+              </h3>
+              <p className="whitespace-pre-wrap">{aiExplanation}</p>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* Right Column: Raw Code Chunks */}
+        {!isInvalidQuery && results.length > 0 && (
+          <div className="space-y-6">
+            <h4 className="text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3">
+              Referenced Code Chunks ({results.length})
+            </h4>
+            <div className="flex flex-col gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+              {results.map((result, index) => (
+                <div
+                  key={index}
+                  className="bg-gray-800 rounded border border-gray-700 overflow-hidden shrink-0"
+                >
+                  <div className="bg-gray-950 px-4 py-2 border-b border-gray-700 flex justify-between items-center">
+                    <span className="text-sm font-mono text-blue-400 truncate mr-4" title={result.file_path}>
+                      {result.file_path}
+                    </span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">Match #{index + 1}</span>
+                  </div>
+                  <div className="p-4 overflow-x-auto">
+                    <pre className="text-sm font-mono text-gray-300">
+                      <code>{result.content}</code>
+                    </pre>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Empty State */}
       {!isInvalidQuery && results.length === 0 && !isLoading && !error && !aiExplanation && (
