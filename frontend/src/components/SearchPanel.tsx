@@ -7,7 +7,6 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 const INVALID_QUERY_TRIGGER = "The input provided is not recognized";
 
-// Sub-component to handle individual chunk state (collapse & copy)
 function CodeChunkCard({ result, index }: { result: any; index: number }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isCopied, setIsCopied] = useState(false);
@@ -18,7 +17,6 @@ function CodeChunkCard({ result, index }: { result: any; index: number }) {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  // Extract file extension for syntax highlighting (default to typescript if unknown)
   const ext = result.file_path.split('.').pop() || 'typescript';
 
   return (
@@ -155,7 +153,6 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
 
   return (
     <div className="mt-8 bg-slate-950 p-6 sm:p-8 rounded-xl shadow-2xl border border-slate-800">
-      {/* Search Header */}
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <Terminal className="w-5 h-5 text-blue-500" />
@@ -199,8 +196,7 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
         </div>
       )}
 
-      {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         
         {/* Left Column: AI Analysis */}
         {(aiExplanation || isLoading) && (
@@ -212,7 +208,6 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
                   : "bg-slate-900 border-slate-700/50 text-slate-300 shadow-[0_0_30px_-10px_rgba(59,130,246,0.15)] relative overflow-hidden"
               }`}
             >
-              {/* Subtle top gradient accent */}
               {!isInvalidQuery && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-cyan-400 opacity-50"></div>
               )}
@@ -224,30 +219,31 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
               >
                 <Sparkles className={`w-5 h-5 ${isInvalidQuery ? "text-amber-400" : "text-blue-400"}`} />
                 AI Analysis
-                {isLoading && !aiExplanation && <span className="flex gap-1 ml-2">
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                </span>}
+                {isLoading && !aiExplanation && (
+                  <span className="flex gap-1 ml-2">
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </span>
+                )}
               </h3>
               <p className="whitespace-pre-wrap text-[15px]">{aiExplanation}</p>
             </div>
           </div>
         )}
 
-        {/* Right Column: Code Chunks & Skeletons */}
+        {/* Right Column: Code Chunks & Skeletons STRICTLY ISOLATED */}
         <div className="space-y-4">
           {(results.length > 0 || isLoading) && (
              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
                Context References
-               {results.length > 0 && (
+               {aiExplanation && results.length > 0 && (
                  <span className="bg-slate-800 text-slate-300 py-0.5 px-2 rounded-full">{results.length}</span>
                )}
              </h4>
           )}
 
-          {/* Skeleton Loaders while fetching */}
-          {isLoading && results.length === 0 && (
+          {isLoading && !aiExplanation ? (
             <div className="flex flex-col gap-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="bg-slate-900 rounded-lg border border-slate-800 p-4 animate-pulse">
@@ -263,20 +259,18 @@ export default function SearchPanel({ repositoryName }: { repositoryName: string
                 </div>
               ))}
             </div>
-          )}
-
-          {/* Render Actual Chunks */}
-          {!isInvalidQuery && results.length > 0 && (
-            <div className="flex flex-col gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar pb-4">
-              {results.map((result, index) => (
-                <CodeChunkCard key={index} result={result} index={index} />
-              ))}
-            </div>
+          ) : (
+            !isInvalidQuery && aiExplanation && results.length > 0 ? (
+              <div className="flex flex-col gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar pb-4 animate-in fade-in duration-300">
+                {results.map((result, index) => (
+                  <CodeChunkCard key={index} result={result} index={index} />
+                ))}
+              </div>
+            ) : null
           )}
         </div>
       </div>
 
-      {/* Empty State */}
       {!isInvalidQuery && results.length === 0 && !isLoading && !error && !aiExplanation && (
         <div className="py-16 text-center border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center gap-3">
           <Search className="w-8 h-8 text-slate-600" />
